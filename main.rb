@@ -6,50 +6,74 @@ Dotenv.load
 token = ENV['TELEGRAM_TOKEN']
 
 class EventManager
-  def setup(name, limit)
-    @name = name
-    @limit = limit.to_i
+  def initialize
     @votes = {}
-    @started = true
+    @limits = {}
+    @names = {}
+    @states = {}
   end
 
-  def value
-    @votes.keys.count
+  def setup(name, limit, chat_id)
+    @names[chat_id] = name
+    @limits[chat_id] = limit.to_i
+    @states[chat_id] = true
+    @votes[chat_id] = {}
   end
 
-  def status
-    if @started
-      "Event: #{@name}, limit: #{@limit}, available: #{@limit - value}"
+  def value(chat_id)
+    votes(chat_id).keys.count || 0
+  end
+
+  def status(chat_id)
+    if started(chat_id)
+      "Event: #{name(chat_id)}, limit: #{limit(chat_id)}, available: #{limit(chat_id)- value(chat_id)}"
     else
       index = 0
-      "Event: #{@name} \n" +
-        "Members: \n" + @votes.values.each do |name|
+      "Event: #{name(chat_id)} \n" +
+        "Members: \n" + (votes(chat_id).values || []).each do |name|
           index += 1
           "#{index}) #{name}"
       end.join("\n")
     end
   end
 
-  def inc(user)
-    return unless @started
-    @votes[user.id] = get_label(user)
-    stop() if @limit == value
+  def inc(chat_id, user)
+    return unless started(chat_id)
+    @votes[chat_id] ||= {}
+    @votes[chat_id][user.id] = get_label(user)
+    stop(chat_id) if limit(chat_id) == value(chat_id)
   end
 
-  def dec(user)
-    @votes.delete(user.id)
-    start() if @limit != value
-  end
-
-  def start
-    @started = true
-  end
-
-  def stop
-    @started = false
+  def dec(chat_id, user)
+    votes(chat_id).delete(user.id)
+    start(chat_id) if limit(chat_id) != value(chat_id)
   end
 
   private
+
+  def votes(chat_id)
+    @votes[chat_id] || {}
+  end
+
+  def start(chat_id)
+    @states[chat_id] = true
+  end
+
+  def stop(chat_id)
+    @states[chat_id] = false
+  end
+
+  def limit(chat_id)
+    @limits[chat_id]
+  end
+
+  def started(chat_id)
+    @states[chat_id]
+  end
+
+  def name(chat_id)
+    @names[chat_id]
+  end
 
   def get_label(user)
     user.username || [user.first_name, user.last_name].compact.join(' ')
@@ -63,16 +87,21 @@ Telegram::Bot::Client.run(token) do |bot|
       when /\/event\s*(\S*)\s*(\S*)/
         name = $1
         limit = $2
-        @event_manager.setup(name, limit)
-        bot.api.sendMessage(chat_id: message.chat.id, text: @event_manager.status())
+        if limit.empty?
+          response = 'Example: /event Hockey 10'
+        else
+          @event_manager.setup(name, limit, message.chat.id)
+          response = @event_manager.status(message.chat.id)
+        end
+        bot.api.sendMessage(chat_id: message.chat.id, text: response)
       when '/status'
-        bot.api.sendMessage(chat_id: message.chat.id, text: @event_manager.status())
+        bot.api.sendMessage(chat_id: message.chat.id, text: @event_manager.status(message.chat.id))
       when '+'
-        @event_manager.inc(message.from)
-        bot.api.sendMessage(chat_id: message.chat.id, text: @event_manager.status())
+        @event_manager.inc(message.chat.id, message.from)
+        bot.api.sendMessage(chat_id: message.chat.id, text: @event_manager.status(message.chat.id))
       when '-'
-        @event_manager.dec(message.from)
-        bot.api.sendMessage(chat_id: message.chat.id, text: @event_manager.status())
+        @event_manager.dec(message.chat.id, message.from)
+        bot.api.sendMessage(chat_id: message.chat.id, text: @event_manager.status(message.chat.id))
     end
   end
 end

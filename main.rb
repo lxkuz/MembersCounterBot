@@ -29,7 +29,7 @@ class EventManager
 
     if full || !started(chat_id)
       idx = 0
-      members = (votes(chat_id).values || []).each do |name|
+      members = (votes(chat_id).values || []).map do |name|
         idx = idx + 1
         "#{idx.to_s}. #{name}"
       end

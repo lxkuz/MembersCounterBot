@@ -34,6 +34,8 @@ class EventManager
         "#{idx.to_s}. #{name}"
       end
       "#{message}\nMembers:\n#{members.join("\n")}"
+    else
+      message
     end
   end
 
